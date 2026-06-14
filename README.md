@@ -11,12 +11,13 @@ An AI-powered legal knowledge platform that automatically fetches, processes, an
 git clone https://github.com/YASTREAMER/legalx-ai-knowledge-centre.git
 cd legalx-ai-knowledge-centre
 
-# Create and activate conda environment
-conda create -n legalx python=3.14.4
+# Create and activate conda environment with req.txt
+conda create -n legalx --file req.txt
 conda activate legalx
 
-# Install dependencies
+# Create and activate conda environment with environment.yml
 conda env create -f environment.yml
+conda activate legalx
 
 # Add your Groq API key
 echo "GROQ_API_KEY=your_key_here" > .env
@@ -166,7 +167,8 @@ legalx-ai-knowledge-centre/
 │   ├── raw/                # Raw scraped text files (auto-generated)
 │   ├── faiss_index/        # FAISS vector indexes per topic (auto-generated)
 │   └── cards.json          # Generated card data (auto-generated)
-├── requirements.txt
+├── req.txt
+├── environment.yml
 └── .env                    # API keys (not committed)
 ```
 
@@ -191,7 +193,7 @@ python-dotenv
 
 Install all with:
 ```bash
-pip install -r requirements.txt
+pip install -r req.txt
 ```
 
 ---
@@ -215,7 +217,7 @@ conda create -n legalx python=3.11
 conda activate legalx
 
 # 3. Install dependencies
-pip install -r requirements.txt
+pip install -r req.txt
 
 # 4. Set up environment variables
 cp .env.example .env
@@ -232,15 +234,54 @@ python run.py --reset
 
 ## 🧗 Challenges Faced
 
-1. **indiankanoon.org blocking scrapers** — The primary legal source blocked automated requests with 403 errors. Solved by switching to the Wikipedia API which is open, free, and returns clean structured text.
+## 🧗 Challenges Faced
 
-2. **LangChain module restructuring** — `langchain.text_splitter` was moved to `langchain_text_splitters` in newer versions, causing import errors. Fixed by installing and importing from the correct package.
+### 1. Finding a Reliable Legal Data Source
+The first challenge was identifying a source that could be scraped programmatically
+without hitting paywalls or bot protection. indiankanoon.org — the most comprehensive
+Indian legal database — blocked all automated requests with 403 errors. Their API
+requires a paid subscription. Government sources like indiacode.nic.in serve content
+as PDFs with inconsistent formatting. Solved by switching to the Wikipedia API which
+is free, open, returns clean plain text, and has solid coverage of all 5 legal topics.
+This kept the pipeline fully automated without any manual content preparation.
 
-3. **streamlit-audiorec Python 3.14 incompatibility** — The audio recording component didn't support Python 3.14. Replaced with `st.file_uploader` + Groq Whisper which is more reliable and works across all Python versions.
+### 2. Reducing API Costs and Groq Call Volume
+With 5 topics each requiring summary generation, key info extraction, and Q&A
+answering, uncached API calls would add up fast. Solved this in three ways:
+- Groq was chosen over OpenAI — it is significantly faster and cheaper for the same
+  LLaMA 3 70B model
+- Generator runs once and caches all output to `cards.json` — Groq is never called
+  again for summaries or key info unless `--reset` is used
+- Q&A answers are cached in Streamlit's `@st.cache_data` — the same question on
+  the same topic only hits Groq once per session, after which it is served from RAM
 
-4. **FAISS index loading** — `allow_dangerous_deserialization=True` flag required for loading saved FAISS indexes in newer LangChain versions.
+### 3. Implementing In-Memory (RAM) Caching
+Streamlit reruns the entire script on every user interaction, which would reload the
+FAISS index and re-embed queries on every button click — making the app extremely slow.
+Solved by using two levels of caching:
+- `@st.cache_resource` for the FAISS vectorstore — loads the index once and keeps it
+  in RAM for the entire session, shared across all users
+- `@st.cache_data` for Q&A answers and audio generation — results are stored in memory
+  keyed by input, so identical calls return instantly without any compute or API cost
 
-5. **Groq returning non-JSON responses** — Occasionally the LLM would wrap JSON in markdown code fences. Added a stripping step before `json.loads()` to handle this gracefully.
+### 4. LangChain Module Restructuring
+`langchain.text_splitter` was moved to a separate `langchain_text_splitters` package
+in newer LangChain versions, causing import errors that weren't obvious from the
+documentation. Fixed by installing `langchain-text-splitters` separately and updating
+the import path.
+
+### 5. Speech-to-Text Library Incompatibility
+`streamlit-audiorec`, the standard Streamlit audio recording component, does not
+support Python 3.14. Rather than downgrading Python, replaced live recording with
+`st.file_uploader` accepting wav/mp3/m4a files, piped directly into Groq's
+`whisper-large-v3` for transcription. This is more practical for end users who can
+record on their phone and upload.
+
+### 6. Groq Returning Non-JSON Responses
+Despite explicit prompting to return only raw JSON, the LLM would occasionally wrap
+responses in markdown code fences. Added a pre-parse stripping step that detects and
+removes triple backticks before passing to `json.loads()`, making the pipeline
+resilient to LLM formatting inconsistencies.
 
 ---
 
@@ -253,6 +294,7 @@ python run.py --reset
 5. **More legal topics** — Expand beyond 5 topics to cover IPC, labour laws, property laws
 6. **Real-time legal updates** — Periodic pipeline re-runs to keep content current with legislative changes
 7. **AI Search** — Cross-topic semantic search across all legal content
+8. **Integrating Indian Kanoon API** — Integrating Indian Kanoon API to get more accurate answers
 
 ---
 
