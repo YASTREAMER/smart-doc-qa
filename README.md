@@ -15,6 +15,8 @@ cd legalx-ai-knowledge-centre
 conda create -n legalx --file req.txt
 conda activate legalx
 
+# OR 
+
 # Create and activate conda environment with environment.yml
 conda env create -f environment.yml
 conda activate legalx
@@ -231,8 +233,6 @@ python run.py --reset
 ```
 
 ---
-
-## 🧗 Challenges Faced
 
 ## 🧗 Challenges Faced
 
